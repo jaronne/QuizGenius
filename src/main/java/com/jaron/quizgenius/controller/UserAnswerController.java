@@ -14,9 +14,13 @@ import com.jaron.quizgenius.model.dto.userAnswer.UserAnswerAddRequest;
 import com.jaron.quizgenius.model.dto.userAnswer.UserAnswerEditRequest;
 import com.jaron.quizgenius.model.dto.userAnswer.UserAnswerQueryRequest;
 import com.jaron.quizgenius.model.dto.userAnswer.UserAnswerUpdateRequest;
+import com.jaron.quizgenius.model.entity.App;
 import com.jaron.quizgenius.model.entity.UserAnswer;
 import com.jaron.quizgenius.model.entity.User;
+import com.jaron.quizgenius.model.enums.ReviewStatusEnum;
 import com.jaron.quizgenius.model.vo.UserAnswerVO;
+import com.jaron.quizgenius.scoring.ScoringStrategyExecutor;
+import com.jaron.quizgenius.service.AppService;
 import com.jaron.quizgenius.service.UserAnswerService;
 import com.jaron.quizgenius.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +33,6 @@ import java.util.List;
 
 /**
  * 用户答案接口
- *
  */
 @RestController
 @RequestMapping("/userAnswer")
@@ -41,6 +44,12 @@ public class UserAnswerController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ScoringStrategyExecutor scoringStrategyExecutor;
+
+    @Resource
+    private AppService appService;
 
     // region 增删改查
 
@@ -69,6 +78,21 @@ public class UserAnswerController {
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         // 返回新写入的数据 id
         long newUserAnswerId = userAnswer.getId();
+        // 判题
+        Long appId = userAnswerAddRequest.getAppId();
+        App app = appService.getById(appId);
+        // 判断应用是否过审
+        if (!ReviewStatusEnum.PASS.equals(ReviewStatusEnum.getEnumByValue(app.getReviewStatus()))) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "应用未通过审核，无法答题");
+        }
+        try {
+            UserAnswer userAnswerWithResult = scoringStrategyExecutor.doScore(userAnswerAddRequest.getChoices(), app);
+            userAnswerWithResult.setId(newUserAnswerId);
+            userAnswerService.updateById(userAnswerWithResult);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "判题错误");
+        }
         return ResultUtils.success(newUserAnswerId);
     }
 
@@ -170,7 +194,7 @@ public class UserAnswerController {
      */
     @PostMapping("/list/page/vo")
     public BaseResponse<Page<UserAnswerVO>> listUserAnswerVOByPage(@RequestBody UserAnswerQueryRequest userAnswerQueryRequest,
-                                                               HttpServletRequest request) {
+                                                                   HttpServletRequest request) {
         long current = userAnswerQueryRequest.getCurrent();
         long size = userAnswerQueryRequest.getPageSize();
         // 限制爬虫
@@ -191,7 +215,7 @@ public class UserAnswerController {
      */
     @PostMapping("/my/list/page/vo")
     public BaseResponse<Page<UserAnswerVO>> listMyUserAnswerVOByPage(@RequestBody UserAnswerQueryRequest userAnswerQueryRequest,
-                                                                 HttpServletRequest request) {
+                                                                     HttpServletRequest request) {
         ThrowUtils.throwIf(userAnswerQueryRequest == null, ErrorCode.PARAMS_ERROR);
         // 补充查询条件，只查询当前登录用户的数据
         User loginUser = userService.getLoginUser(request);
