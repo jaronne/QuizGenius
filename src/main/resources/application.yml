@@ -99,3 +99,7 @@ knife4j:
         api-rule: package
         api-rule-resources:
           - com.jaron.quizgenius.controller
+# ai 配置
+ai:
+  # 不要上传自己的key到公共仓库！！！！
+  apiKey: "aaa"

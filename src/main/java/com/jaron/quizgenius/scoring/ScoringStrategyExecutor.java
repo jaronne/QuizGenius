@@ -16,6 +16,7 @@ import java.util.List;
 public class ScoringStrategyExecutor {
 
     // 策略列表
+    // 注入的时候，会通过 ScoringStrategy 类型找到所有实现 ScoringStrategy 接口的实现类
     @Resource
     private List<ScoringStrategy> scoringStrategyList;
 
